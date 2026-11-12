@@ -1,0 +1,320 @@
+#party-root,
+#party-toggle,
+#party-roster,
+#party-countdown,
+#party-toast {
+  position: fixed;
+  z-index: 20;
+  font-family: system-ui, sans-serif;
+  color: #000;
+  user-select: none;
+}
+
+#party-root {
+  inset: 0;
+  pointer-events: none;
+}
+
+[hidden] { display: none !important; }
+
+.party-panel {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: 326px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  padding: 22px;
+  border: 2px solid #000;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, .16);
+  pointer-events: auto;
+}
+
+.party-kicker {
+  margin-bottom: 8px;
+  color: #315c6b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
+.party-panel h1,
+.party-panel h2 {
+  margin: 0 0 8px;
+  font-size: 23px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.party-copy {
+  margin: 0 0 17px;
+  color: #42616c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.party-panel label {
+  display: block;
+  margin: 0 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.party-input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border: 2px solid #607b85;
+  border-radius: 4px;
+  outline: none;
+  background: #fff;
+  color: #000;
+  font: 14px system-ui, sans-serif;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.party-input:focus {
+  border-color: #0078d4;
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, .18);
+}
+
+.party-primary,
+.party-secondary {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 2px solid #000;
+  border-radius: 4px;
+  font: 600 13px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.party-primary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 12px;
+  background: #000;
+  color: #fff;
+}
+
+.party-primary:hover { background: #254c5c; }
+.party-primary:disabled { opacity: .55; cursor: wait; }
+.party-primary span { font-size: 19px; }
+
+.party-secondary {
+  background: #fff;
+  color: #000;
+  white-space: nowrap;
+}
+
+.party-secondary:hover { background: #e5f3f5; }
+.party-wide { width: 100%; margin-top: 10px; }
+
+.party-divider {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 18px 0 12px;
+  color: #66808a;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.party-divider::before,
+.party-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #c4d2d6;
+}
+
+.party-join-row { display: flex; gap: 7px; }
+#party-code { text-transform: uppercase; letter-spacing: 2px; font-weight: 700; }
+#party-share-link { font-size: 10px; color: #46616c; }
+
+.party-muted {
+  margin: 12px 0 0;
+  color: #5d747d;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.party-error {
+  margin: 12px 0 0;
+  padding: 8px;
+  border-radius: 4px;
+  background: #fee9e7;
+  color: #8f271e;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.party-invite {
+  margin-bottom: 13px;
+  padding: 8px;
+  border-radius: 4px;
+  background: #ddf5ed;
+  color: #145f50;
+  font-size: 11px;
+  text-align: center;
+}
+
+.party-room-code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #006c7d;
+  font: inherit;
+  letter-spacing: 2px;
+  cursor: pointer;
+}
+
+.party-player-heading {
+  display: flex;
+  justify-content: space-between;
+  margin: 19px 0 8px;
+  color: #5d747d;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.party-player-list { display: grid; gap: 5px; }
+
+.party-player-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 31px;
+  padding: 5px 8px;
+  border: 1px solid #c7d5d9;
+  border-radius: 4px;
+  background: #f7fbfb;
+  font-size: 11px;
+}
+
+.party-player-row.is-local { border-color: #007c91; }
+.party-player-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.party-player-status { color: #526b75; font-size: 10px; white-space: nowrap; }
+.party-player-rank { width: 13px; color: #526b75; font-size: 10px; }
+
+.party-text-button {
+  display: block;
+  margin: 13px auto 0;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: #355664;
+  font: 11px system-ui, sans-serif;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+#party-toggle {
+  left: 12px;
+  bottom: 12px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 2px solid rgba(255, 255, 255, .8);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, .62);
+  color: #fff;
+  font: 600 12px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+#party-roster {
+  left: 12px;
+  bottom: 54px;
+  width: 238px;
+  padding: 12px;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  background: rgba(0, 39, 52, .9);
+  color: #fff;
+}
+
+#party-roster .party-player-row { border-color: rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .07); }
+#party-roster .party-player-status,
+#party-roster .party-player-rank { color: #d3e5e9; }
+#party-roster .party-text-button { color: #fff; }
+
+.party-roster-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.party-roster-heading button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 19px;
+  cursor: pointer;
+}
+
+#party-countdown {
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+#party-countdown span {
+  color: #fff;
+  font-size: 112px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 4px 4px 0 #000;
+}
+
+#party-countdown small { margin-top: 10px; font-size: 12px; font-weight: 800; letter-spacing: 3px; }
+
+#party-toast {
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  max-width: min(400px, 85vw);
+  padding: 10px 14px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, .82);
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+  pointer-events: none;
+}
+
+@media (max-width: 680px) {
+  .party-panel {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    max-height: 62vh;
+    padding: 17px;
+  }
+
+  .party-panel h1,
+  .party-panel h2 { font-size: 20px; }
+  #party-toggle { bottom: max(10px, env(safe-area-inset-bottom)); }
+  #party-roster { bottom: calc(54px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-height: 650px) and (min-width: 681px) {
+  .party-panel { max-height: calc(100vh - 32px); }
+}

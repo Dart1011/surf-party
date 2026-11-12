@@ -1,136 +1,132 @@
-<!doctype html>
-<html lang="en">
+<!-- Copyright (C) Microsoft Corporation. All rights reserved.
+ Use of this source code is governed by a BSD-style license that can be
+ found in the LICENSE file. -->
+
+<!DOCTYPE html>
+<html dir="ltr" lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#072f45" />
-    <meta name="description" content="Surf with friends in a free, browser-based endless multiplayer game. Share a room, dodge the kraken, and surf as far as you can." />
-    <title>Surf Party — Multiplayer Endless Surfing</title>
-    <link rel="icon" type="image/png" href="./classic/resources/icons/favicon-32x32.png" />
-    <link rel="stylesheet" href="./src/style.css" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="The original Microsoft Edge S.U.R.F. game with multiplayer rooms, live distances, and synchronized rematches.">
+    <title>S.U.R.F. — Multiplayer</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="./classic/resources/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./classic/resources/icons/favicon-16x16.png">
+    <meta name="theme-color" content="#ffffff">
+    <script>
+      try {
+        const stats = JSON.parse(localStorage.getItem('stats'));
+        if (stats) {
+          stats.mode = 'CLASSIC';
+          stats.reducedSpeedMode = false;
+          localStorage.setItem('stats', JSON.stringify(stats));
+        }
+      } catch {}
+    </script>
+    <script src="./classic/base-error-reporting.js"></script>
+    <script src="./classic/surf-error-reporting.js"></script>
+    <script src="./classic/resources/js/assert.js"></script>
+    <script src="./classic/resources/js/promise_resolver.js"></script>
+    <script src="./classic/resources/js/cr.js"></script>
+    <script src="./classic/resources/js/parse_html_subset.js"></script>
+    <script src="./classic/resources/js/load_time_data.js"></script>
+    <script src="./classic/resources/js/util.js"></script>
+    <script src="./classic/focus-visible.min.js"></script>
+    <script src="./classic/strings.js"></script>
+    <link href="./classic/interface.css" rel="stylesheet" media="all" />
+    <link href="./src/party.css" rel="stylesheet" media="all" />
   </head>
   <body>
-    <canvas id="game-canvas" aria-label="Multiplayer surfing game"></canvas>
-    <div class="ocean-shade" aria-hidden="true"></div>
+    <div id="game-bg" class="full-size"></div>
+    <div id="game-water" class="full-size"></div>
+    <canvas id="game-canvas" class="full-size"></canvas>
+    <div id="game-tint" class="full-size"></div>
+    <div id="game-ui" class="full-size"></div>
+    <div style="display:none" id="preload">
+      <img src="./classic/ambient64.png" id="ambient64"/>
+      <img src="./classic/docks64.png" id="docks64" />
+      <img src="./classic/effects128.png" id="effects128" />
+      <img src="./classic/enemy128.png" id="enemy128" />
+      <img src="./classic/interact64.png" id="interact64" />
+      <img src="./classic/interface24.png" id="interface24" />
+      <img src="./classic/island1280.png" id="island1280" />
+      <img src="./classic/objects32.png" id="objects32" />
+      <img src="./classic/objects64.png" id="objects64" />
+      <img src="./classic/player64.png" id="player64" />
+      <img src="./classic/ripple96.png" id="ripple96" />
+      <img src="./classic/sandbar256.png" id="sandbar256" />
+      <img src="./classic/slowdown64.png" id="slowdown64" />
+      <img src="./classic/surfboard64.png" id="surfboard64" />
+      <img src="./classic/surfer64.png" id="surfer64" />
+      <img src="./classic/water256.png" id="water256" />
+    </div>
+    <div id="hamburger-container"></div>
+    <div id="modal-root"></div>
 
-    <header class="topbar">
-      <button id="brand-home" class="brand" aria-label="Surf Party home">
-        <svg viewBox="0 0 42 42" aria-hidden="true"><path d="M5 27c7-1 8-13 23-16-3 5-2 8 7 10-4 2-7 2-11 1 3 3 7 4 11 4-8 8-23 9-30 1Z" fill="currentColor"/><path d="M5 33c5 3 9 3 14 0 5 3 9 3 14 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-        <span>SURF <b>PARTY</b></span>
-      </button>
-      <div class="top-actions">
-        <span id="connection-pill" class="connection-pill" hidden><i></i><span></span></span>
-        <button id="help-button" class="icon-button" aria-label="How to play" title="How to play">?</button>
-        <button id="leave-button" class="small-button" hidden>Leave room</button>
-      </div>
-    </header>
-
-    <main>
-      <section id="home-screen" class="screen home-screen">
-        <div class="hero-copy">
-          <div class="eyebrow"><span class="live-dot"></span> MULTIPLAYER ENDLESS SURFING</div>
-          <h1>SURF<br /><span>PARTY</span></h1>
-          <p>Same wave. Three lives. One hungry kraken.<br />Grab your friends and surf as far as you can.</p>
-          <div class="feature-row">
-            <span>2–8 players</span><span>Free to play</span><span>No accounts</span>
-          </div>
+    <div id="party-root">
+      <section id="party-home" class="party-panel">
+        <div class="party-kicker">ORIGINAL EDGE S.U.R.F. · MULTIPLAYER</div>
+        <h1>Surf with your crew</h1>
+        <p class="party-copy">The original game, together. Create a room and share the link.</p>
+        <div id="party-invite" class="party-invite" hidden>You’ve been invited to <strong id="party-invite-code"></strong></div>
+        <label for="party-name">Display name</label>
+        <input id="party-name" class="party-input" maxlength="16" autocomplete="nickname" placeholder="Your name">
+        <button id="party-create" class="party-primary">Create a room <span>→</span></button>
+        <div class="party-divider">OR JOIN A ROOM</div>
+        <div class="party-join-row">
+          <input id="party-code" class="party-input" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ROOM CODE" aria-label="Room code">
+          <button id="party-join" class="party-secondary">Join</button>
         </div>
-
-        <div class="panel home-panel">
-          <div id="invite-banner" class="invite-banner" hidden>You’ve been invited to <strong id="invite-code"></strong></div>
-          <div class="profile-heading">
-            <div><span class="step-label">YOUR SURFER</span><h2>Ready to ride?</h2></div>
-            <div class="character-picker">
-              <button id="character-previous" class="picker-arrow" aria-label="Previous surfer">‹</button>
-              <canvas id="character-preview" width="64" height="64" aria-label="Selected surfer"></canvas>
-              <button id="character-next" class="picker-arrow" aria-label="Next surfer">›</button>
-            </div>
-          </div>
-          <label class="field-label" for="name-input">Display name</label>
-          <input id="name-input" class="text-input" maxlength="16" autocomplete="nickname" placeholder="Your name" />
-          <button id="create-button" class="primary-button"><span>Create a room</span><span aria-hidden="true">→</span></button>
-          <div class="divider"><span>OR JOIN YOUR CREW</span></div>
-          <div class="join-row">
-            <input id="code-input" class="text-input code-input" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ROOM CODE" aria-label="Six-character room code" />
-            <button id="join-button" class="secondary-button">Join room</button>
-          </div>
-          <p id="home-error" class="form-error" role="alert" hidden></p>
-          <p id="busy-message" class="busy-message" hidden><span class="spinner"></span> Connecting…</p>
-          <p class="privacy-note">Your browser connects directly to the host. No sign-up needed.</p>
-        </div>
+        <p id="party-error" class="party-error" role="alert" hidden></p>
+        <p id="party-busy" class="party-muted" hidden>Connecting…</p>
       </section>
 
-      <section id="lobby-screen" class="screen lobby-screen" hidden>
-        <div class="panel lobby-panel">
-          <div class="eyebrow">YOUR CREW IS ASSEMBLING</div>
-          <h2>Room <button id="copy-code" class="room-code" title="Copy room code"></button></h2>
-          <p id="lobby-subtitle">Share this link with your friends</p>
-          <div class="share-row">
-            <input id="share-link" class="text-input" readonly aria-label="Room invite link" />
-            <button id="copy-link" class="secondary-button">Copy link</button>
-            <button id="native-share" class="icon-button share-button" aria-label="Share invite" hidden>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
-            </button>
-          </div>
-          <div class="lobby-section-heading"><span>PLAYERS</span><span id="player-count"></span></div>
-          <div id="lobby-players" class="lobby-players"></div>
-          <button id="start-button" class="primary-button"><span>Start surfing</span><span>→</span></button>
-          <p id="host-waiting" class="waiting-message" hidden><span class="spinner"></span> Waiting for the host to start…</p>
-          <p class="host-note">The host’s browser runs the room. Keep that tab open while playing.</p>
+      <section id="party-lobby" class="party-panel" hidden>
+        <div class="party-kicker">YOUR CREW</div>
+        <h2>Room <button id="party-copy-code" class="party-room-code"></button></h2>
+        <p class="party-copy">Share this link. The original surfer selection stays in the background.</p>
+        <div class="party-join-row">
+          <input id="party-share-link" class="party-input" readonly aria-label="Invite link">
+          <button id="party-copy-link" class="party-secondary">Copy link</button>
         </div>
+        <div class="party-player-heading">PLAYERS <span id="party-player-count"></span></div>
+        <div id="party-lobby-players" class="party-player-list"></div>
+        <button id="party-surfer" class="party-secondary party-wide">Change surfer <span>→</span></button>
+        <button id="party-start" class="party-primary">Start surfing <span>→</span></button>
+        <p id="party-waiting" class="party-muted" hidden>Waiting for the host to start…</p>
+        <p class="party-muted">Keep the host tab open while playing.</p>
+        <button id="party-leave-lobby" class="party-text-button">Leave room</button>
       </section>
 
-      <section id="results-screen" class="screen results-screen" hidden>
-        <div class="panel results-panel">
-          <div class="eyebrow">RUN COMPLETE</div>
-          <h2 id="results-title">Wipeout!</h2>
-          <p id="results-subtitle">Here’s how far the crew surfed</p>
-          <div id="results-list" class="results-list"></div>
-          <button id="rematch-button" class="primary-button"><span>Surf again</span><span>↻</span></button>
-          <button id="lobby-button" class="text-button" hidden>Back to lobby</button>
-          <p id="results-waiting" class="waiting-message" hidden>Waiting for the host to start the next run…</p>
-        </div>
+      <section id="party-results" class="party-panel" hidden>
+        <div class="party-kicker">RUN COMPLETE</div>
+        <h2>Crew distances</h2>
+        <div id="party-results-list" class="party-player-list"></div>
+        <button id="party-rematch" class="party-primary">Surf again <span>↻</span></button>
+        <button id="party-back-lobby" class="party-secondary party-wide">Back to lobby</button>
+        <p id="party-results-waiting" class="party-muted" hidden>Waiting for the host…</p>
       </section>
-    </main>
 
-    <section id="race-hud" aria-label="Race information" hidden>
-      <div class="race-status">
-        <div class="race-status-top"><span id="race-distance">0 M</span><span>ENDLESS</span></div>
-        <span class="finish-label">SURF AS FAR AS YOU CAN</span>
-        <span id="kraken-warning" class="kraken-warning" hidden>KRAKEN CLOSING IN</span>
-      </div>
-      <div id="leaderboard" class="leaderboard panel"></div>
-      <div id="player-stats" class="player-stats panel"></div>
-      <div id="spectator-notice" class="spectator-notice panel" hidden>You’re spectating this run. You’ll surf in the next one.</div>
-      <div class="desktop-controls"><span><kbd>←</kbd><kbd>→</kbd> steer</span><span><kbd>↑</kbd><kbd>↓</kbd> speed</span><span><kbd>SPACE</kbd> boost</span></div>
-      <div id="mobile-controls" class="mobile-controls">
-        <button data-control="left" aria-label="Steer left">←</button>
-        <button data-control="right" aria-label="Steer right">→</button>
-        <button data-control="boost" class="boost-control" aria-label="Use boost">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-9 12h7l-1 8 10-13h-7V2Z"/></svg>
-          BOOST
-        </button>
-      </div>
-    </section>
+      <section id="party-spectator" class="party-panel" hidden>
+        <div class="party-kicker">SPECTATING</div>
+        <h2>You’re in the crew</h2>
+        <p class="party-copy">This run is already underway. You’ll surf in the next one.</p>
+        <div id="party-spectator-list" class="party-player-list"></div>
+        <button id="party-leave-spectator" class="party-text-button">Leave room</button>
+      </section>
+    </div>
 
-    <div id="countdown" class="countdown" hidden><span id="countdown-number">3</span><small>GET READY</small></div>
-    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <button id="party-toggle" hidden>Crew · <span id="party-toggle-count">1</span></button>
+    <aside id="party-roster" hidden>
+      <div class="party-roster-heading"><span>LIVE DISTANCES</span><button id="party-close-roster" aria-label="Close player list">×</button></div>
+      <div id="party-live-players" class="party-player-list"></div>
+      <button id="party-leave-playing" class="party-text-button">Leave room</button>
+    </aside>
+    <div id="party-countdown" hidden><span>3</span><small>GET READY</small></div>
+    <div id="party-toast" role="status" aria-live="polite" hidden></div>
 
-    <dialog id="help-dialog" class="help-dialog panel">
-      <button id="close-help" class="dialog-close icon-button" aria-label="Close instructions">×</button>
-      <div class="eyebrow">HOW TO PLAY</div>
-      <h2>Stay ahead of the kraken</h2>
-      <ol class="help-list">
-        <li><b>Create and share</b><span>One player creates a room. Everyone else opens the invite link and enters the room code.</span></li>
-        <li><b>Surf for your life</b><span>There is no finish line. You have three lives, and rocks or docks cost one. If the kraken catches you, your run ends instantly.</span></li>
-        <li><b>Grab an edge</b><span>Collect lightning for boosts, hearts for lives, and coins for bragging rights. Ramps launch you over danger. Make the kraken hit obstacles to slow it down.</span></li>
-      </ol>
-      <div class="key-guide"><span><kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd> steer</span><span><kbd>↑</kbd><kbd>↓</kbd> adjust speed</span><span><kbd>SPACE</kbd> or <kbd>F</kbd> boost</span></div>
-      <p>On a phone, use the on-screen controls. Surf until you lose all three lives or the kraken catches you. The farthest distance wins.</p>
-      <a class="classic-link" href="./classic/index.html" target="_blank" rel="noopener">Play the original single-player Classic →</a>
-    </dialog>
-
-    <footer id="home-footer"><span>Built for friendly competition.</span><a href="./classic/index.html" target="_blank" rel="noopener">Classic mode ↗</a></footer>
-    <script type="module" src="./src/main.js"></script>
+    <script type="text/javascript" src="./classic/lib_react.chunk.js"></script>
+    <script type="text/javascript" src="./classic/lib_common.chunk.js"></script>
+    <script type="text/javascript" src="./surf-party.bundle.js"></script>
+    <script type="module" src="./src/party.js"></script>
   </body>
 </html>

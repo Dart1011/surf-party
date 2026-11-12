@@ -35,13 +35,6 @@ export function shareUrl(code) {
   return url.href;
 }
 
-export function playerColor(id) {
-  const colors = ['#ffde59', '#ff7b72', '#7c83ff', '#46dfb0', '#ff9f43', '#f472d0', '#75e6ff', '#c4f26b'];
-  let hash = 0;
-  for (const char of String(id)) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
-  return colors[Math.abs(hash) % colors.length];
-}
-
 export function sanitizeProfile(profile) {
   return {
     name: cleanName(profile?.name),
@@ -49,12 +42,12 @@ export function sanitizeProfile(profile) {
   };
 }
 
-export function sanitizeInput(input) {
+export function sanitizeStats(stats) {
+  const distance = Number(stats?.distance);
+  const lives = Number(stats?.lives);
   return {
-    left: input?.left === true,
-    right: input?.right === true,
-    up: input?.up === true,
-    down: input?.down === true,
-    boost: input?.boost === true,
+    distance: Number.isFinite(distance) ? Math.max(0, Math.min(10000000, Math.floor(distance))) : 0,
+    lives: Number.isFinite(lives) ? Math.max(0, Math.min(3, Math.floor(lives))) : 0,
+    over: stats?.over === true,
   };
 }

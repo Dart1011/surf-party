@@ -1,5 +1,5 @@
 import { Peer } from 'peerjs';
-import { MAX_PLAYERS, cleanCode, hostPeerId, makeRoomCode, sanitizeInput, sanitizeProfile } from './protocol.js';
+import { MAX_PLAYERS, cleanCode, hostPeerId, makeRoomCode, sanitizeProfile, sanitizeStats } from './protocol.js';
 
 const ERROR_MESSAGES = {
   'peer-unavailable': 'That room was not found. Check the code and ask the host to keep their tab open.',
@@ -124,7 +124,7 @@ export class Room extends EventTarget {
         return;
       }
       if (!playerId) return;
-      if (message.type === 'input') this.emit('input', { id: playerId, input: sanitizeInput(message.input) });
+      if (message.type === 'stats') this.updateStats(playerId, message.stats);
       if (message.type === 'profile') this.updatePlayer(playerId, message.profile);
     });
     const remove = () => {
@@ -162,8 +162,12 @@ export class Room extends EventTarget {
       this.phase = 'race';
       this.emit('start', message);
     }
-    if (message.type === 'snapshot') this.emit('snapshot', message);
-    if (message.type === 'events') this.emit('race-events', message.events);
+    if (message.type === 'stats') this.emit('stats', message);
+    if (message.type === 'results') {
+      this.phase = 'results';
+      this.players = message.players;
+      this.emit('results', message);
+    }
     if (message.type === 'full') this.emit('error', 'That room is full. Rooms support up to 8 players.');
   }
 
@@ -180,6 +184,28 @@ export class Room extends EventTarget {
     else if (this.hostConnection?.open) this.hostConnection.send({ type: 'profile', profile: this.profile });
   }
 
+  updateStats(id, value) {
+    const player = this.players.find(player => player.id === id);
+    if (!player) return;
+    player.stats = sanitizeStats(value);
+    const message = { type: 'stats', id, stats: player.stats };
+    this.broadcast(message);
+    this.emit('stats', message);
+  }
+
+  sendStats(stats) {
+    if (this.isHost) this.updateStats(this.localId, stats);
+    else if (this.hostConnection?.open) this.hostConnection.send({ type: 'stats', stats: sanitizeStats(stats) });
+  }
+
+  finishRace() {
+    if (!this.isHost) return;
+    this.phase = 'results';
+    const message = { type: 'results', players: this.players };
+    this.broadcast(message);
+    this.emit('results', message);
+  }
+
   broadcastLobby() {
     if (!this.isHost) return;
     this.broadcast({ type: 'lobby', phase: this.phase, players: this.players });
@@ -188,24 +214,14 @@ export class Room extends EventTarget {
 
   startRace(race) {
     this.phase = 'race';
+    for (const player of this.players) delete player.stats;
     this.broadcast({ type: 'start', ...race });
-  }
-
-  sendSnapshot(raceId, snapshot) {
-    this.broadcast({ type: 'snapshot', raceId, snapshot });
-  }
-
-  sendEvents(events) {
-    if (events.length) this.broadcast({ type: 'events', events });
-  }
-
-  sendInput(input) {
-    if (!this.isHost && this.hostConnection?.open) this.hostConnection.send({ type: 'input', input });
   }
 
   returnToLobby() {
     if (!this.isHost) return;
     this.phase = 'lobby';
+    for (const player of this.players) delete player.stats;
     this.broadcastLobby();
   }
 
