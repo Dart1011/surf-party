@@ -1,8 +1,7 @@
 import { Controls } from './input.js';
 import { Room } from './network.js';
 import { cleanCharacter, cleanCode, cleanName, MAX_PLAYERS, playerColor, shareUrl } from './protocol.js';
-import { FINISH_DISTANCE } from './course.js';
-import { Race, RACE_DURATION } from './race.js';
+import { Race } from './race.js';
 import { drawCharacterPreview, loadAssets, Renderer } from './renderer.js';
 
 const $ = id => document.getElementById(id);
@@ -192,7 +191,7 @@ function renderLobby() {
   $('player-count').textContent = `${roomPlayers.length} / ${MAX_PLAYERS}`;
   $('start-button').hidden = !room.isHost;
   $('host-waiting').hidden = room.isHost;
-  $('lobby-subtitle').textContent = room.isHost ? 'Share this link with your friends' : 'You’re in! The host will start the race';
+  $('lobby-subtitle').textContent = room.isHost ? 'Share this link with your friends' : 'You’re in! The host will start the run';
   const list = $('lobby-players');
   list.replaceChildren();
   for (const player of roomPlayers) {
@@ -252,6 +251,7 @@ function beginRace(data) {
   updateCountdown();
   const participating = raceParticipants.some(player => player.id === room.localId);
   $('spectator-notice').hidden = participating;
+  $('spectator-notice').textContent = participating ? 'You’re out! Spectating until the next run.' : 'You’re spectating this run. You’ll surf in the next one.';
   $('mobile-controls').hidden = !participating;
 }
 
@@ -272,24 +272,16 @@ function handleSnapshot(snapshot) {
 }
 
 function sortedPlayers() {
-  return [...(latestSnapshot?.players || [])].sort((a, b) => {
-    if (a.finished && b.finished) return a.finishTime - b.finishTime;
-    if (a.finished !== b.finished) return a.finished ? -1 : 1;
-    if (a.out !== b.out) return a.out ? 1 : -1;
-    return b.y - a.y || b.coins - a.coins;
-  });
+  return [...(latestSnapshot?.players || [])].sort((a, b) => b.y - a.y || b.coins - a.coins);
 }
 
 function updateHUD() {
   if (!latestSnapshot) return;
   const local = latestSnapshot.players.find(player => player.id === room.localId);
   const camera = local || sortedPlayers()[0];
-  if (camera) {
-    $('race-distance').textContent = `${Math.floor(camera.y / 10)} M`;
-    $('race-progress').style.width = `${Math.min(100, camera.y / FINISH_DISTANCE * 100)}%`;
-  }
-  const seconds = Math.max(0, Math.ceil(RACE_DURATION - latestSnapshot.time));
-  $('race-time').textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  if (camera) $('race-distance').textContent = `${Math.floor(camera.y / 10)} M`;
+  const chasing = local && latestSnapshot.enemies?.find(enemy => enemy.targetId === local.id);
+  $('kraken-warning').hidden = !chasing?.active || local.out || Math.hypot(chasing.x - local.x, chasing.y - local.y) > 280;
   const leaderboard = $('leaderboard');
   leaderboard.replaceChildren();
   sortedPlayers().forEach((player, index) => {
@@ -303,11 +295,12 @@ function updateHUD() {
     name.textContent = player.name;
     const distance = document.createElement('span');
     distance.className = 'leader-distance';
-    distance.textContent = player.finished ? formatTime(player.finishTime) : player.disconnected ? 'LEFT' : player.out ? 'OUT' : `${Math.floor(player.y / 10)}m`;
+    distance.textContent = player.disconnected ? 'LEFT' : `${Math.floor(player.y / 10)}m`;
     row.append(rank, name, distance);
     leaderboard.append(row);
   });
   $('player-stats').hidden = !local;
+  if (local?.out) $('spectator-notice').hidden = false;
   if (local) $('player-stats').replaceChildren(
     statGroup('M19.6 3.2 12 17.2 8.8 12 3 13.4C2.2 5.6 9.8.4 16 3l-4 6 4 1 3.6-6.8Z', `${local.lives}`, 'heart'),
     statGroup('M13 2 4 14h7l-1 8 10-13h-7V2Z', `${local.boosts}`, 'bolt'),
@@ -357,7 +350,10 @@ function handleRaceEvents(events) {
     if (event.type === 'heart') toast('Extra life collected!');
     if (event.type === 'coin') toast('Coin collected!');
     if (event.type === 'ramp') toast('Big air!');
-    if (event.type === 'finish') toast('You made it to the island!');
+    if (event.type === 'kraken-warning') toast('The kraken is chasing you!');
+    if (event.type === 'kraken-crash') toast('The kraken hit an obstacle. Keep going!');
+    if (event.type === 'kraken') toast('The kraken caught you!');
+    if (event.type === 'out') toast('All three lives used.');
   }
 }
 
@@ -366,8 +362,8 @@ function showResults() {
   const standings = sortedPlayers();
   const local = standings.find(player => player.id === room.localId);
   const winner = standings[0];
-  $('results-title').textContent = local && winner?.id === room.localId ? 'You ruled the wave!' : winner ? `${winner.name} wins!` : 'Race complete!';
-  $('results-subtitle').textContent = local?.finished ? `You finished in ${formatTime(local.finishTime)} with ${local.coins} coins.` : 'The island is calling. Ready for another run?';
+  $('results-title').textContent = local?.grabbedByEnemy ? 'The kraken got you!' : local && winner?.id === room.localId ? 'You went the farthest!' : winner ? `${winner.name} went farthest!` : 'Wipeout!';
+  $('results-subtitle').textContent = local ? `You surfed ${Math.floor(local.y / 10)} meters and collected ${local.coins} coins.` : 'The ocean always wins. Ready for another run?';
   const list = $('results-list');
   list.replaceChildren();
   standings.forEach((player, index) => {
@@ -382,7 +378,7 @@ function showResults() {
     name.textContent = player.id === room.localId ? `${player.name} (you)` : player.name;
     const detail = document.createElement('span');
     detail.className = 'result-detail';
-    detail.textContent = player.finished ? formatTime(player.finishTime) : player.disconnected ? 'Left' : `${Math.floor(player.y / 10)} m`;
+    detail.textContent = `${Math.floor(player.y / 10)} m`;
     row.append(rank, name, detail);
     list.append(row);
   });
@@ -391,13 +387,10 @@ function showResults() {
   $('results-waiting').hidden = room.isHost;
 }
 
-function formatTime(seconds) {
-  return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}.${Math.floor((seconds % 1) * 10)}`;
-}
-
 function sendControls(input) {
   if (view !== 'race' || Date.now() < startAt || latestSnapshot?.ended) return;
   if (!raceParticipants.some(player => player.id === room.localId)) return;
+  if (latestSnapshot?.players.find(player => player.id === room.localId)?.out) return;
   if (room.isHost) race?.setInput(room.localId, input);
   else room.sendInput(input);
 }
@@ -431,7 +424,8 @@ function animate(now) {
   } else renderer.drawIdle(now / 1000, roomPlayers);
 
   const participating = raceParticipants.some(player => player.id === room.localId);
-  controls.enabled = view === 'race' && participating && Date.now() >= startAt && !latestSnapshot?.ended;
+  const localOut = latestSnapshot?.players.find(player => player.id === room.localId)?.out;
+  controls.enabled = view === 'race' && participating && !localOut && Date.now() >= startAt && !latestSnapshot?.ended;
   if (view === 'race' && Date.now() >= startAt && !latestSnapshot?.ended) {
     if (room.isHost && race) {
       accumulator += dt;

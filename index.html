@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#072f45" />
-    <meta name="description" content="Surf with friends in a free, browser-based multiplayer race. Create a room, share a link, and catch a wave together." />
-    <title>Surf Party — Multiplayer Surf Racing</title>
+    <meta name="description" content="Surf with friends in a free, browser-based endless multiplayer game. Share a room, dodge the kraken, and surf as far as you can." />
+    <title>Surf Party — Multiplayer Endless Surfing</title>
     <link rel="icon" type="image/png" href="./classic/resources/icons/favicon-32x32.png" />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
@@ -28,9 +28,9 @@
     <main>
       <section id="home-screen" class="screen home-screen">
         <div class="hero-copy">
-          <div class="eyebrow"><span class="live-dot"></span> MULTIPLAYER SURF RACING</div>
+          <div class="eyebrow"><span class="live-dot"></span> MULTIPLAYER ENDLESS SURFING</div>
           <h1>SURF<br /><span>PARTY</span></h1>
-          <p>Same wave. Same race. One winner.<br />Grab your friends and hit the water.</p>
+          <p>Same wave. Three lives. One hungry kraken.<br />Grab your friends and surf as far as you can.</p>
           <div class="feature-row">
             <span>2–8 players</span><span>Free to play</span><span>No accounts</span>
           </div>
@@ -74,7 +74,7 @@
           </div>
           <div class="lobby-section-heading"><span>PLAYERS</span><span id="player-count"></span></div>
           <div id="lobby-players" class="lobby-players"></div>
-          <button id="start-button" class="primary-button"><span>Start race</span><span>→</span></button>
+          <button id="start-button" class="primary-button"><span>Start surfing</span><span>→</span></button>
           <p id="host-waiting" class="waiting-message" hidden><span class="spinner"></span> Waiting for the host to start…</p>
           <p class="host-note">The host’s browser runs the room. Keep that tab open while playing.</p>
         </div>
@@ -82,26 +82,26 @@
 
       <section id="results-screen" class="screen results-screen" hidden>
         <div class="panel results-panel">
-          <div class="eyebrow">RACE COMPLETE</div>
-          <h2 id="results-title">Wave conquered!</h2>
-          <p id="results-subtitle">Here’s how the crew finished</p>
+          <div class="eyebrow">RUN COMPLETE</div>
+          <h2 id="results-title">Wipeout!</h2>
+          <p id="results-subtitle">Here’s how far the crew surfed</p>
           <div id="results-list" class="results-list"></div>
-          <button id="rematch-button" class="primary-button"><span>Race again</span><span>↻</span></button>
+          <button id="rematch-button" class="primary-button"><span>Surf again</span><span>↻</span></button>
           <button id="lobby-button" class="text-button" hidden>Back to lobby</button>
-          <p id="results-waiting" class="waiting-message" hidden>Waiting for the host to start a rematch…</p>
+          <p id="results-waiting" class="waiting-message" hidden>Waiting for the host to start the next run…</p>
         </div>
       </section>
     </main>
 
     <section id="race-hud" aria-label="Race information" hidden>
       <div class="race-status">
-        <div class="race-status-top"><span id="race-distance">0 M</span><span id="race-time">1:30</span></div>
-        <div class="progress-track"><div id="race-progress"></div></div>
-        <span class="finish-label">600 M TO THE ISLAND</span>
+        <div class="race-status-top"><span id="race-distance">0 M</span><span>ENDLESS</span></div>
+        <span class="finish-label">SURF AS FAR AS YOU CAN</span>
+        <span id="kraken-warning" class="kraken-warning" hidden>KRAKEN CLOSING IN</span>
       </div>
       <div id="leaderboard" class="leaderboard panel"></div>
       <div id="player-stats" class="player-stats panel"></div>
-      <div id="spectator-notice" class="spectator-notice panel" hidden>You’re spectating this race. You’ll surf in the next one.</div>
+      <div id="spectator-notice" class="spectator-notice panel" hidden>You’re spectating this run. You’ll surf in the next one.</div>
       <div class="desktop-controls"><span><kbd>←</kbd><kbd>→</kbd> steer</span><span><kbd>↑</kbd><kbd>↓</kbd> speed</span><span><kbd>SPACE</kbd> boost</span></div>
       <div id="mobile-controls" class="mobile-controls">
         <button data-control="left" aria-label="Steer left">←</button>
@@ -119,14 +119,14 @@
     <dialog id="help-dialog" class="help-dialog panel">
       <button id="close-help" class="dialog-close icon-button" aria-label="Close instructions">×</button>
       <div class="eyebrow">HOW TO PLAY</div>
-      <h2>Catch the winning wave</h2>
+      <h2>Stay ahead of the kraken</h2>
       <ol class="help-list">
         <li><b>Create and share</b><span>One player creates a room. Everyone else opens the invite link and enters the room code.</span></li>
-        <li><b>Race to the island</b><span>Steer around rocks and docks. You have three lives; a crash costs one.</span></li>
-        <li><b>Grab an edge</b><span>Collect lightning for boosts, hearts for lives, and coins for bragging rights. Ramps launch you over danger.</span></li>
+        <li><b>Surf for your life</b><span>There is no finish line. You have three lives, and rocks or docks cost one. If the kraken catches you, your run ends instantly.</span></li>
+        <li><b>Grab an edge</b><span>Collect lightning for boosts, hearts for lives, and coins for bragging rights. Ramps launch you over danger. Make the kraken hit obstacles to slow it down.</span></li>
       </ol>
       <div class="key-guide"><span><kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd> steer</span><span><kbd>↑</kbd><kbd>↓</kbd> adjust speed</span><span><kbd>SPACE</kbd> or <kbd>F</kbd> boost</span></div>
-      <p>On a phone, use the on-screen controls. The first surfer to 600 meters wins. If time runs out, the farthest surfer wins.</p>
+      <p>On a phone, use the on-screen controls. Surf until you lose all three lives or the kraken catches you. The farthest distance wins.</p>
       <a class="classic-link" href="./classic/index.html" target="_blank" rel="noopener">Play the original single-player Classic →</a>
     </dialog>
 

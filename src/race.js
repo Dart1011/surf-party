@@ -1,14 +1,15 @@
-import { FINISH_DISTANCE, WORLD_EDGE, generateCourse } from './course.js';
+import { Course, WORLD_EDGE } from './course.js';
 import { sanitizeInput } from './protocol.js';
 
-export const RACE_DURATION = 90;
 const EMPTY_INPUT = sanitizeInput();
 const round = value => Math.round(value * 10) / 10;
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export class Race {
   constructor(players, seed) {
     this.seed = seed;
-    this.course = generateCourse(seed);
+    this.course = new Course(seed);
+    this.course.ensure(1600);
     this.time = 0;
     this.ended = false;
     this.collected = new Set();
@@ -29,10 +30,19 @@ export class Race {
       crashTime: 0,
       immuneTime: 0,
       airTime: 0,
-      finished: false,
-      finishTime: null,
       out: false,
+      grabbedByEnemy: false,
       disconnected: false,
+    }]));
+    this.enemies = new Map([...this.players.values()].map(player => [player.id, {
+      targetId: player.id,
+      x: player.x,
+      y: player.y - 360,
+      speed: 0,
+      active: false,
+      grabbed: false,
+      stunTime: 0,
+      hitObstacles: new Set(),
     }]));
     for (const id of this.players.keys()) this.inputs.set(id, { ...EMPTY_INPUT });
   }
@@ -42,7 +52,7 @@ export class Race {
     const previous = this.inputs.get(id) || EMPTY_INPUT;
     const next = sanitizeInput(input);
     const player = this.players.get(id);
-    if (next.boost && !previous.boost && player.boosts > 0 && !player.finished && !player.out && player.crashTime <= 0) {
+    if (next.boost && !previous.boost && player.boosts > 0 && !player.out && player.crashTime <= 0) {
       player.boosts -= 1;
       player.boostTime = 2.2;
       this.events.push({ type: 'boost', id });
@@ -52,23 +62,23 @@ export class Race {
 
   disconnect(id) {
     const player = this.players.get(id);
-    if (!player || player.finished) return;
+    if (!player) return;
     player.disconnected = true;
     player.out = true;
+    const enemy = this.enemies.get(id);
+    if (enemy) enemy.active = false;
     this.inputs.set(id, { ...EMPTY_INPUT });
   }
 
   update(dt) {
     if (this.ended) return;
-    dt = Math.min(Math.max(dt, 0), 0.05);
+    dt = clamp(dt, 0, 0.05);
     this.time += dt;
-    let completed = 0;
+    const farthest = Math.max(0, ...[...this.players.values()].map(player => player.y));
+    this.course.ensure(farthest + 1400);
 
     for (const player of this.players.values()) {
-      if (player.finished || player.out) {
-        completed += 1;
-        continue;
-      }
+      if (player.out) continue;
       const input = this.inputs.get(player.id) || EMPTY_INPUT;
       player.immuneTime = Math.max(0, player.immuneTime - dt);
       player.boostTime = Math.max(0, player.boostTime - dt);
@@ -82,9 +92,9 @@ export class Race {
       } else {
         const targetSpeed = Math.max(85, 180 + Math.min(35, this.time * 0.5) + (input.up ? 30 : 0) - (input.down ? 65 : 0) + (player.boostTime > 0 ? 135 : 0));
         const acceleration = targetSpeed > player.speed ? 105 : 260;
-        player.speed += Math.max(-acceleration * dt, Math.min(acceleration * dt, targetSpeed - player.speed));
+        player.speed += clamp(targetSpeed - player.speed, -acceleration * dt, acceleration * dt);
         const steering = Number(input.right) - Number(input.left);
-        player.vx += Math.max(-850 * dt, Math.min(850 * dt, steering * 285 - player.vx));
+        player.vx += clamp(steering * 285 - player.vx, -850 * dt, 850 * dt);
       }
 
       player.x += player.vx * dt;
@@ -95,25 +105,16 @@ export class Race {
       }
 
       if (player.crashTime <= 0) this.checkCollisions(player);
-      if (player.y >= FINISH_DISTANCE && !player.out) {
-        player.y = FINISH_DISTANCE;
-        player.finished = true;
-        player.finishTime = this.time;
-        player.speed = 0;
-        this.events.push({ type: 'finish', id: player.id });
-        completed += 1;
-      }
     }
 
-    if (this.time >= RACE_DURATION) this.ended = true;
-    if (completed === this.players.size) this.ended = true;
+    this.updateEnemies(dt);
+    if ([...this.players.values()].every(player => player.out)) this.ended = true;
   }
 
   checkCollisions(player) {
-    for (const obstacle of this.course) {
+    for (const obstacle of this.course.nearby(player.y)) {
+      if (this.collected.has(obstacle.id)) continue;
       const dy = obstacle.y - player.y;
-      if (dy > 55) break;
-      if (dy < -45 || this.collected.has(obstacle.id)) continue;
       const collectible = ['boost', 'heart', 'coin', 'ramp'].includes(obstacle.type);
       const radius = obstacle.type === 'dock' ? 47 : collectible ? 34 : 35;
       if (Math.abs(obstacle.x - player.x) > radius || Math.abs(dy) > 34) continue;
@@ -139,9 +140,68 @@ export class Race {
       player.boostTime = 0;
       this.events.push({ type: 'crash', id: player.id });
       if (player.lives <= 0) {
+        player.lives = 0;
         player.out = true;
         player.speed = 0;
         this.events.push({ type: 'out', id: player.id });
+        break;
+      }
+    }
+  }
+
+  updateEnemies(dt) {
+    for (const enemy of this.enemies.values()) {
+      const player = this.players.get(enemy.targetId);
+      if (!player || player.disconnected) {
+        enemy.active = false;
+        continue;
+      }
+      if (player.out) {
+        if (!enemy.grabbed) enemy.active = false;
+        continue;
+      }
+      if (!enemy.active) {
+        if (player.y < 750) continue;
+        enemy.active = true;
+        enemy.x = player.x;
+        enemy.y = player.y - 360;
+        this.events.push({ type: 'kraken-warning', id: player.id });
+      }
+      if (enemy.stunTime > 0) {
+        enemy.stunTime = Math.max(0, enemy.stunTime - dt);
+        continue;
+      }
+
+      const dx = player.x - enemy.x;
+      const dy = player.y - enemy.y;
+      const distance = Math.hypot(dx, dy);
+      const catchup = clamp((dy - 400) * 0.18, 0, 70);
+      enemy.speed = Math.min(360, 168 + this.time * 1.65) + catchup;
+      if (distance > 0) {
+        enemy.x += dx / distance * enemy.speed * dt;
+        enemy.y += dy / distance * enemy.speed * dt;
+      }
+
+      const hit = this.course.nearby(enemy.y, 40, 40).find(obstacle =>
+        !enemy.hitObstacles.has(obstacle.id) &&
+        ['rock', 'dock', 'ramp'].includes(obstacle.type) &&
+        Math.abs(obstacle.x - enemy.x) < 48 &&
+        Math.abs(obstacle.y - enemy.y) < 38
+      );
+      if (hit) {
+        enemy.hitObstacles.add(hit.id);
+        enemy.stunTime = 1.2;
+        this.events.push({ type: 'kraken-crash', id: player.id });
+        continue;
+      }
+
+      if (Math.abs(player.x - enemy.x) < 44 && Math.abs(player.y - enemy.y) < 48) {
+        player.lives = 0;
+        player.out = true;
+        player.grabbedByEnemy = true;
+        player.speed = 0;
+        enemy.grabbed = true;
+        this.events.push({ type: 'kraken', id: player.id });
       }
     }
   }
@@ -153,12 +213,7 @@ export class Race {
   }
 
   standings() {
-    return [...this.players.values()].sort((a, b) => {
-      if (a.finished && b.finished) return a.finishTime - b.finishTime;
-      if (a.finished !== b.finished) return a.finished ? -1 : 1;
-      if (a.out !== b.out) return a.out ? 1 : -1;
-      return b.y - a.y || b.coins - a.coins;
-    });
+    return [...this.players.values()].sort((a, b) => b.y - a.y || b.coins - a.coins);
   }
 
   snapshot() {
@@ -176,6 +231,15 @@ export class Race {
         crashTime: round(player.crashTime),
         immuneTime: round(player.immuneTime),
         airTime: round(player.airTime),
+      })),
+      enemies: [...this.enemies.values()].map(enemy => ({
+        targetId: enemy.targetId,
+        x: round(enemy.x),
+        y: round(enemy.y),
+        speed: round(enemy.speed),
+        active: enemy.active,
+        grabbed: enemy.grabbed,
+        stunTime: round(enemy.stunTime),
       })),
     };
   }

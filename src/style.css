@@ -102,9 +102,9 @@ body[data-view="race"] .ocean-shade, body[data-view="results"] .ocean-shade { di
 #race-hud button { pointer-events: auto; }
 .race-status { position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: min(330px, 37vw); color: var(--navy); }
 .race-status-top { display: flex; justify-content: space-between; font-weight: 800; font-size: 15px; }
-.progress-track { height: 7px; background: rgba(6,52,73,.25); border-radius: 6px; overflow: hidden; margin-top: 7px; border: 1px solid rgba(255,255,255,.3); }
-#race-progress { height: 100%; width: 0; background: var(--yellow); transition: width .1s linear; }
 .finish-label { display: block; text-align: center; margin-top: 5px; font-size: 8px; letter-spacing: 1px; font-weight: 800; }
+.kraken-warning { display: block; margin-top: 8px; color: #8b235b; font-size: 10px; font-weight: 800; letter-spacing: 1px; text-align: center; animation: kraken-pulse .7s ease-in-out infinite alternate; }
+@keyframes kraken-pulse { to { opacity: .45; } }
 .leaderboard { position: absolute; top: 85px; right: 22px; width: 215px; padding: 13px; border-radius: 13px; background: rgba(4,44,61,.85); color: #fff; border-color: rgba(255,255,255,.12); box-shadow: none; }
 .leader-row { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid rgba(255,255,255,.09); font-size: 11px; }
 .leader-row:last-child { border: 0; }

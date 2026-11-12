@@ -1,9 +1,8 @@
-import { FINISH_DISTANCE } from './course.js';
-import { generateCourse, seedFromString } from './course.js';
+import { Course, generateCourse, seedFromString } from './course.js';
 import { playerColor } from './protocol.js';
 
 const ASSET_ROOT = `${import.meta.env.BASE_URL}classic/`;
-const FILES = ['player64', 'surfboard64', 'objects64', 'docks64', 'interact64', 'ripple96', 'water256', 'island1280'];
+const FILES = ['player64', 'surfboard64', 'objects64', 'docks64', 'interact64', 'ripple96', 'water256', 'enemy128'];
 const images = {};
 
 export async function loadAssets() {
@@ -32,9 +31,10 @@ export class Renderer {
     this.canvas = canvas;
     this.context = canvas.getContext('2d');
     this.snapshot = null;
-    this.course = [];
+    this.course = new Course(0);
     this.collected = new Set();
     this.displayed = new Map();
+    this.displayedEnemies = new Map();
     this.localId = null;
     this.demoCourse = generateCourse(seedFromString('SURF PARTY'));
     this.resize();
@@ -54,10 +54,12 @@ export class Renderer {
   }
 
   resetRace(seed, localId) {
-    this.course = generateCourse(seed);
+    this.course = new Course(seed);
+    this.course.ensure(1800);
     this.localId = localId;
     this.snapshot = null;
     this.displayed.clear();
+    this.displayedEnemies.clear();
     this.collected.clear();
   }
 
@@ -71,6 +73,11 @@ export class Renderer {
     }
     const ids = new Set(snapshot.players.map(player => player.id));
     for (const id of this.displayed.keys()) if (!ids.has(id)) this.displayed.delete(id);
+
+    for (const enemy of snapshot.enemies || []) {
+      if (!this.displayedEnemies.has(enemy.targetId)) this.displayedEnemies.set(enemy.targetId, { ...enemy });
+    }
+    for (const id of this.displayedEnemies.keys()) if (!ids.has(id)) this.displayedEnemies.delete(id);
   }
 
   drawIdle(time, players = []) {
@@ -106,24 +113,37 @@ export class Renderer {
       player.x += (target.x - player.x) * blend;
       player.y += (target.y - player.y) * blend;
       player.vx += (target.vx - player.vx) * blend;
-      for (const key of ['speed', 'lives', 'boosts', 'coins', 'boostTime', 'crashTime', 'immuneTime', 'airTime', 'finished', 'finishTime', 'out', 'disconnected', 'name', 'character']) {
+      for (const key of ['speed', 'lives', 'boosts', 'coins', 'boostTime', 'crashTime', 'immuneTime', 'airTime', 'out', 'grabbedByEnemy', 'disconnected', 'name', 'character']) {
         player[key] = target[key];
       }
+    }
+    for (const target of this.snapshot.enemies || []) {
+      const enemy = this.displayedEnemies.get(target.targetId);
+      enemy.x += (target.x - enemy.x) * blend;
+      enemy.y += (target.y - enemy.y) * blend;
+      for (const key of ['speed', 'active', 'grabbed', 'stunTime']) enemy[key] = target[key];
     }
     const local = this.displayed.get(this.localId) || [...this.displayed.values()].sort((a, b) => b.y - a.y)[0];
     if (!local) return;
     this.drawWater(local.y, local.x);
+    this.course.ensure(local.y + this.height + 1200);
     const originY = this.height * 0.4;
     const toScreen = (x, y) => ({ x: x - local.x + this.width / 2, y: originY + y - local.y });
 
-    for (const obstacle of this.course) {
+    for (const obstacle of this.course.obstacles) {
       if (this.collected.has(obstacle.id)) continue;
       const point = toScreen(obstacle.x, obstacle.y);
       if (point.y < -100 || point.y > this.height + 110 || point.x < -100 || point.x > this.width + 100) continue;
       this.drawObstacle({ ...obstacle, ...point, screenSpace: true }, time);
     }
 
-    this.drawFinish(toScreen(0, FINISH_DISTANCE), time);
+    for (const enemy of this.displayedEnemies.values()) {
+      if (!enemy.active) continue;
+      const point = toScreen(enemy.x, enemy.y);
+      if (point.y < -150 || point.y > this.height + 150 || point.x < -150 || point.x > this.width + 150) continue;
+      this.drawEnemy({ ...enemy, ...point }, time);
+    }
+
     const players = [...this.displayed.values()].sort((a, b) => a.y - b.y);
     for (const player of players) {
       const point = toScreen(player.x, player.y);
@@ -178,6 +198,12 @@ export class Renderer {
     this.context.globalAlpha = 0.65;
     this.context.drawImage(images.ripple96, 0, frame * 32, 96, 32, Math.round(x - 48), Math.round(y - 16), 96, 32);
     this.context.globalAlpha = 1;
+  }
+
+  drawEnemy(enemy, time) {
+    const pose = enemy.grabbed ? 1 : 0;
+    const frame = enemy.grabbed ? Math.min(5, Math.floor(time * 10) % 6) : enemy.stunTime > 0 ? 4 + Math.floor(time * 5) % 2 : Math.floor(time * 7) % 4;
+    this.context.drawImage(images.enemy128, pose * 128, frame * 128, 128, 128, Math.round(enemy.x - 64), Math.round(enemy.y - 64), 128, 128);
   }
 
   drawPlayer(player, time, local, showName) {
@@ -239,31 +265,5 @@ export class Renderer {
       context.textBaseline = 'middle';
       context.fillText(label, x, labelY - 3);
     }
-  }
-
-  drawFinish(point, time) {
-    if (point.y < -1200 || point.y > this.height + 1200) return;
-    const context = this.context;
-    const left = point.x - 570;
-    context.save();
-    context.strokeStyle = 'rgba(255,255,255,.8)';
-    context.lineWidth = 4;
-    context.setLineDash([18, 14]);
-    context.beginPath();
-    context.moveTo(left, point.y);
-    context.lineTo(left + 1140, point.y);
-    context.stroke();
-    context.setLineDash([]);
-    for (const x of [left, left + 1140]) {
-      context.drawImage(images.objects64, 22 * 64, 0, 64, 64, x - 32, point.y - 32, 64, 64);
-    }
-    const islandWidth = 1100;
-    const islandHeight = images.island1280.height / images.island1280.width * islandWidth;
-    context.drawImage(images.island1280, point.x - islandWidth / 2, point.y + 70, islandWidth, islandHeight);
-    context.font = '800 16px system-ui, sans-serif';
-    context.textAlign = 'center';
-    context.fillStyle = '#ffffff';
-    context.fillText('FINISH', point.x, point.y - 42 + Math.sin(time * 3) * 2);
-    context.restore();
   }
 }

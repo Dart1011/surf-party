@@ -1,21 +1,22 @@
 # Surf Party
 
-A browser-based multiplayer surf race built around the style and sprites of Microsoft Edge S.U.R.F. One player hosts, friends open an invite link, and up to eight players race to the island together.
+A browser-based multiplayer endless surfing game built around the style and sprites of Microsoft Edge S.U.R.F. One player hosts, friends open an invite link, and up to eight players surf together.
 
 ## Play
 
 Play at **https://dart1011.github.io/surf-party/**.
 
-Create a room, copy the invite link, and send it to your friends. Friends enter a display name and join; the host starts the race. Players who join during a race spectate and automatically join the next round.
+Create a room, copy the invite link, and send it to your friends. Friends enter a display name and join; the host starts the run. Players who join during a run spectate and automatically join the next round.
 
 - Steer with the arrow keys or A/D.
 - Adjust speed with Up/Down or W/S.
 - Use Space or F for a boost. Double-click also boosts.
 - Touch controls are included on mobile.
-- Avoid rocks and docks, collect boosts and hearts, and hit ramps to jump over hazards.
-- The first player to 600 meters wins. If time runs out, the farthest player wins.
+- You have three lives. Rocks and docks cost one life; hearts restore up to three.
+- A kraken begins chasing each surfer after 75 meters. It can crash into obstacles, but if it catches you, your run ends immediately.
+- There is no finish line or time limit. The course continues generating until every surfer wipes out; distance determines the standings.
 
-The host must keep their tab open. Closing it ends the room. Gameplay uses encrypted browser-to-browser WebRTC connections; PeerJS's public cloud service is used only for connection signaling. The host runs the authoritative race simulation and sends live snapshots to the other players. No account or game server is required, but restrictive networks that block WebRTC can prevent a connection.
+The host must keep their tab open. Closing it ends the room. Gameplay uses encrypted browser-to-browser WebRTC connections; PeerJS's public cloud service is used only for connection signaling. The host runs the authoritative endless simulation and sends live snapshots to the other players. No account or game server is required, but restrictive networks that block WebRTC can prevent a connection.
 
 ## Run locally
 
