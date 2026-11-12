@@ -1,3 +1,9 @@
+#crew-canvas {
+  z-index: -700;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
 #party-root,
 #party-toggle,
 #party-roster,

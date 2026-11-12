@@ -1,3 +1,4 @@
+import { CrewOverlay } from './crew.js';
 import { Room } from './network.js';
 import { cleanCode, cleanName, shareUrl } from './protocol.js';
 
@@ -28,6 +29,16 @@ try {
 }
 
 room = createRoom();
+
+const crewOverlay = new CrewOverlay($('crew-canvas'));
+crewOverlay.start(() => ({
+  visible: view === 'playing',
+  localId: room.localId,
+  players: participants.map(participant => ({
+    ...participant,
+    stats: room.players.find(player => player.id === participant.id)?.stats,
+  })),
+}));
 
 function createRoom() {
   const next = new Room();
@@ -254,10 +265,12 @@ function readOriginalStats() {
   const counter = document.querySelector('#counter-amount');
   const distance = Number.parseInt(counter?.textContent || '0', 10) || 0;
   const lives = document.querySelectorAll('#stats-lives .life-full, #stats-lives .shield').length;
+  const engine = window.__surfPartyState?.() || {};
   return {
     distance,
     lives,
     over: document.querySelector('#ui-title')?.textContent === 'Surf again',
+    ...engine,
   };
 }
 

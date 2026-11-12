@@ -6930,6 +6930,16 @@
                     function() {
                         const e = $("game-canvas"),
                             s = new Xe(e);
+                        window.__surfPartyState = () => ({
+                            worldX: $e.data.game.distance.xPx,
+                            worldY: $e.data.game.distance.yPx,
+                            screenX: Le.system.player.x,
+                            screenY: Le.system.player.y,
+                            pose: Le.system.player.pose,
+                            character: $e.data.session.settings.character,
+                            sessionState: $e.data.session.state,
+                            air: $e.data.player.distance.air
+                        });
                         let t, i = window.performance.now();
                         const a = () => {
                             t = requestAnimationFrame(a);

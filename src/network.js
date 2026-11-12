@@ -62,7 +62,7 @@ export class Room extends EventTarget {
     this.hostLastSeen = Date.now();
     this.connect();
     this.every(3000, () => this.sendPresence());
-    this.every(1000, () => this.flushStats());
+    this.every(250, () => this.flushStats());
     this.every(5000, () => this.removeStalePlayers());
   }
 
@@ -263,7 +263,7 @@ export class Room extends EventTarget {
       return;
     }
     const now = Date.now();
-    if (now - this.lastStatsSent < 1000 && !stats.over) return;
+    if (now - this.lastStatsSent < 250 && !stats.over) return;
     this.lastStatsSent = now;
     this.publish({ type: 'stats', stats: sanitizeStats(stats) });
   }
