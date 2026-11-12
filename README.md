@@ -19,7 +19,7 @@ Use the original controls:
 - Original touch controls on mobile.
 - Tab or the Crew button to show the live multiplayer roster without stopping the game.
 
-The host must keep their tab open. Closing it ends the room. WebRTC connections are encrypted, and PeerJS's public cloud service is used for connection signaling. No account or game server is required, but restrictive networks that block WebRTC can prevent a connection.
+The host must keep their tab open. Closing it ends the room. Lightweight room messages use secure MQTT-over-WebSocket connections through public EMQX and HiveMQ brokers instead of direct peer-to-peer connections, so players on different networks do not need WebRTC or TURN. No account or self-hosted server is required. The room code identifies a public, non-retained relay topic; use a non-sensitive display name and do not put private information in room messages.
 
 ## Run locally
 

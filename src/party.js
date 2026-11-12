@@ -72,7 +72,7 @@ function createRoom() {
     next.leave();
     showHome('The host left, so this room has closed.');
   });
-  next.addEventListener('status', message => toast(message));
+  next.addEventListener('status', event => toast(event.detail));
   return next;
 }
 

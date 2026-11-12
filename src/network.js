@@ -1,27 +1,39 @@
-import { Peer } from 'peerjs';
-import { MAX_PLAYERS, cleanCode, hostPeerId, makeRoomCode, sanitizeProfile, sanitizeStats } from './protocol.js';
+import mqtt from 'mqtt';
+import { MAX_PLAYERS, cleanCode, makeRoomCode, sanitizeProfile, sanitizeStats } from './protocol.js';
 
+const BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
+const TOPIC_PREFIX = 'surf-party/rooms/v2/';
 const ERROR_MESSAGES = {
-  'peer-unavailable': 'That room was not found. Check the code and ask the host to keep their tab open.',
-  'network': 'Could not reach the room service. Check your connection and try again.',
-  'browser-incompatible': 'This browser does not support WebRTC. Try the latest Chrome, Edge, Firefox, or Safari.',
-  'unavailable-id': 'That room code is already in use. Please try again.',
+  network: 'Could not reach the room service. Check your connection and try again.',
+  'browser-incompatible': 'This browser cannot open a room connection. Try the latest Chrome, Edge, Firefox, or Safari.',
 };
+
+function clientId() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
 
 export class Room extends EventTarget {
   constructor() {
     super();
-    this.peer = null;
     this.isHost = false;
     this.localId = null;
+    this.clientId = clientId();
     this.code = '';
     this.players = [];
     this.phase = 'home';
-    this.connections = new Map();
-    this.hostConnection = null;
     this.raceProvider = null;
-    this.nextPlayerId = 1;
     this.destroyed = false;
+    this.mqttClient = null;
+    this.brokerIndex = 0;
+    this.hasConnected = false;
+    this.hasWelcomed = false;
+    this.lastSeen = new Map();
+    this.hostLastSeen = 0;
+    this.lastStatsSent = 0;
+    this.statsDirty = false;
+    this.timers = new Set();
   }
 
   emit(type, detail) {
@@ -33,26 +45,25 @@ export class Room extends EventTarget {
     this.emit('error', ERROR_MESSAGES[kind] || error?.message || 'The connection failed. Please try again.');
   }
 
-  create(profile, retries = 2) {
+  every(milliseconds, callback) {
+    const timer = setInterval(callback, milliseconds);
+    this.timers.add(timer);
+    return timer;
+  }
+
+  create(profile) {
     this.destroyed = false;
     this.isHost = true;
     this.phase = 'lobby';
     this.code = makeRoomCode();
     this.profile = sanitizeProfile(profile);
-    this.peer = new Peer(hostPeerId(this.code), { debug: 0 });
-    this.peer.on('open', () => {
-      this.localId = 'host';
-      this.players = [{ id: 'host', ...this.profile, host: true }];
-      this.emit('ready', { code: this.code, players: this.players });
-    });
-    this.peer.on('connection', connection => this.acceptConnection(connection));
-    this.peer.on('error', error => {
-      if (error?.type === 'unavailable-id' && retries > 0) {
-        this.peer.destroy();
-        this.create(this.profile, retries - 1);
-      } else this.error(error);
-    });
-    this.peer.on('disconnected', () => this.reconnect());
+    this.localId = 'host';
+    this.players = [{ id: 'host', ...this.profile, host: true }];
+    this.hostLastSeen = Date.now();
+    this.connect();
+    this.every(3000, () => this.sendPresence());
+    this.every(1000, () => this.flushStats());
+    this.every(5000, () => this.removeStalePlayers());
   }
 
   join(code, profile) {
@@ -61,95 +72,109 @@ export class Room extends EventTarget {
     this.phase = 'joining';
     this.code = cleanCode(code);
     this.profile = sanitizeProfile(profile);
-    this.peer = new Peer({ debug: 0 });
+    this.localId = this.clientId;
+    this.players = [];
+    this.hostLastSeen = Date.now();
     const timeout = setTimeout(() => {
-      if (this.phase === 'joining') this.emit('error', 'The room took too long to respond. Check the code and try again.');
-    }, 15000);
-    this.peer.on('open', () => {
-      const connection = this.peer.connect(hostPeerId(this.code), {
-        reliable: true,
-        serialization: 'json',
-        metadata: this.profile,
-      });
-      this.hostConnection = connection;
-      connection.on('data', message => this.receive(message));
-      connection.on('open', () => connection.send({ type: 'hello', profile: this.profile }));
-      connection.on('close', () => {
-        clearTimeout(timeout);
-        if (!this.destroyed) this.emit('host-left');
-      });
-      connection.on('error', error => {
-        clearTimeout(timeout);
-        this.error(error);
-      });
+      if (this.phase !== 'joining') return;
+      this.leave();
+      this.emit('error', 'The room did not respond. Check the code and make sure the host still has the room open.');
+    }, 30000);
+    this.timers.add(timeout);
+    this.connect();
+    this.every(4000, () => this.sendPresence());
+    this.every(3000, () => {
+      if (this.phase !== 'joining' && Date.now() - this.hostLastSeen > 25000) {
+        const wasDestroyed = this.destroyed;
+        this.leave();
+        if (!wasDestroyed) this.emit('host-left');
+      }
     });
-    this.peer.on('error', error => {
-      clearTimeout(timeout);
-      this.error(error);
-    });
-    this.peer.on('disconnected', () => this.reconnect());
   }
 
-  reconnect() {
-    if (this.destroyed || !this.peer || this.peer.destroyed) return;
-    this.emit('status', 'Reconnecting to the room service…');
-    try {
-      this.peer.reconnect();
-    } catch {}
-  }
-
-  acceptConnection(connection) {
-    let playerId = null;
-    connection.on('data', message => {
-      if (!message || typeof message !== 'object') return;
-      if (message.type === 'hello' && !playerId) {
-        if (this.players.length >= MAX_PLAYERS) {
-          connection.send({ type: 'full' });
-          setTimeout(() => connection.close(), 100);
+  connect() {
+    if (this.destroyed) return;
+    const topic = `${TOPIC_PREFIX}${this.code}`;
+    this.mqttClient = mqtt.connect(BROKERS[this.brokerIndex], {
+      clientId: `surf-party-${this.clientId}`,
+      clean: true,
+      connectTimeout: 12000,
+      reconnectPeriod: 2000,
+      keepalive: 30,
+    });
+    this.mqttClient.on('connect', () => {
+      this.mqttClient.subscribe(topic, { qos: 0 }, error => {
+        if (error) {
+          this.error(error);
           return;
         }
-        playerId = `p${this.nextPlayerId++}`;
-        this.connections.set(playerId, connection);
-        const player = { id: playerId, ...sanitizeProfile(message.profile || connection.metadata), host: false };
-        this.players.push(player);
-        connection.send({
-          type: 'welcome',
-          id: playerId,
-          code: this.code,
-          phase: this.phase,
-          players: this.players,
-          race: this.phase === 'race' ? this.raceProvider?.() : null,
-        });
-        this.broadcastLobby();
-        return;
-      }
-      if (!playerId) return;
-      if (message.type === 'stats') this.updateStats(playerId, message.stats);
-      if (message.type === 'profile') this.updatePlayer(playerId, message.profile);
+        this.hostLastSeen = Date.now();
+        if (this.isHost) {
+          if (!this.hasConnected) this.emit('ready', { code: this.code, players: this.players });
+          this.sendPresence();
+          this.broadcastLobby();
+        } else {
+          this.publish({ type: 'hello', profile: this.profile });
+        }
+        this.hasConnected = true;
+      });
     });
-    const remove = () => {
-      if (!playerId || !this.connections.has(playerId)) return;
-      this.connections.delete(playerId);
-      this.players = this.players.filter(player => player.id !== playerId);
-      this.emit('player-left', { id: playerId });
-      this.broadcastLobby();
-    };
-    connection.on('close', remove);
-    connection.on('error', remove);
-    connection.on('iceStateChanged', state => {
-      if (state === 'failed' || state === 'closed') remove();
+    this.mqttClient.on('message', (receivedTopic, payload) => {
+      if (receivedTopic !== topic) return;
+      try {
+        const message = JSON.parse(payload.toString());
+        if (!message || message.sender === this.clientId) return;
+        if (message.target && message.target !== this.clientId) return;
+        this.receive(message);
+      } catch {}
     });
+    this.mqttClient.on('close', () => {
+      if (!this.destroyed) this.emit('status', 'Reconnecting to the room service…');
+    });
+    this.mqttClient.on('error', () => {
+      if (!this.hasConnected && this.brokerIndex === 0) {
+        this.brokerIndex = 1;
+        this.mqttClient.end(true);
+        this.connect();
+      } else if (this.phase === 'joining') this.emit('status', 'Still trying to reach the room…');
+    });
+  }
+
+  publish(message, afterLeave = false) {
+    if (!this.mqttClient || (this.destroyed && !afterLeave)) return;
+    const body = JSON.stringify({ ...message, sender: this.clientId, isHost: this.isHost });
+    this.mqttClient.publish(`${TOPIC_PREFIX}${this.code}`, body, { qos: 0, retain: false });
+  }
+
+  broadcast(message) {
+    return this.publish(message);
+  }
+
+  sendPresence() {
+    if (this.destroyed) return;
+    this.publish({ type: 'presence', phase: this.phase });
   }
 
   receive(message) {
-    if (!message || typeof message !== 'object') return;
+    if (message.type === 'presence') {
+      if (this.isHost) this.lastSeen.set(message.sender, Date.now());
+      else if (message.isHost) this.hostLastSeen = Date.now();
+      return;
+    }
+    if (this.isHost) {
+      this.receiveAsHost(message);
+      return;
+    }
+    if (message.isHost) this.hostLastSeen = Date.now();
     if (message.type === 'welcome') {
+      const resuming = this.hasWelcomed;
+      this.hasWelcomed = true;
       this.localId = message.id;
       this.phase = message.phase;
       this.players = message.players;
-      this.emit('ready', { code: this.code, players: this.players });
+      if (!resuming) this.emit('ready', { code: this.code, players: this.players });
       this.emit('lobby', { players: this.players, phase: this.phase });
-      if (message.race) this.emit('start', message.race);
+      if (message.race && !resuming) this.emit('start', message.race);
       return;
     }
     if (message.type === 'lobby') {
@@ -163,12 +188,52 @@ export class Room extends EventTarget {
       this.emit('start', message);
     }
     if (message.type === 'stats') this.emit('stats', message);
+    if (message.type === 'stats-batch') {
+      for (const [id, stats] of Object.entries(message.stats || {})) {
+        const player = this.players.find(player => player.id === id);
+        if (player) player.stats = sanitizeStats(stats);
+        this.emit('stats', { id, stats: sanitizeStats(stats) });
+      }
+    }
     if (message.type === 'results') {
       this.phase = 'results';
       this.players = message.players;
       this.emit('results', message);
     }
     if (message.type === 'full') this.emit('error', 'That room is full. Rooms support up to 8 players.');
+    if (message.type === 'host-left') this.emit('host-left');
+  }
+
+  receiveAsHost(message) {
+    this.lastSeen.set(message.sender, Date.now());
+    if (message.type === 'hello') {
+      const existing = this.players.find(player => player.id === message.sender);
+      if (!existing && this.players.length >= MAX_PLAYERS) {
+        this.publish({ type: 'full', target: message.sender });
+        return;
+      }
+      if (!existing) {
+        this.players.push({ id: message.sender, ...sanitizeProfile(message.profile), host: false });
+      }
+      this.publish({
+        type: 'welcome',
+        target: message.sender,
+        id: message.sender,
+        code: this.code,
+        phase: this.phase,
+        players: this.publicPlayers(),
+        race: this.phase === 'race' ? this.raceProvider?.() : null,
+      });
+      this.broadcastLobby();
+      return;
+    }
+    if (message.type === 'stats') this.updateStats(message.sender, message.stats);
+    if (message.type === 'profile') this.updatePlayer(message.sender, message.profile);
+    if (message.type === 'leave') this.removePlayer(message.sender);
+  }
+
+  publicPlayers() {
+    return this.players.map(({ id, name, character, host, stats }) => ({ id, name, character, host, stats }));
   }
 
   updatePlayer(id, profile) {
@@ -181,41 +246,57 @@ export class Room extends EventTarget {
   updateProfile(profile) {
     this.profile = sanitizeProfile(profile);
     if (this.isHost) this.updatePlayer(this.localId, this.profile);
-    else if (this.hostConnection?.open) this.hostConnection.send({ type: 'profile', profile: this.profile });
+    else this.publish({ type: 'profile', profile: this.profile });
   }
 
   updateStats(id, value) {
     const player = this.players.find(player => player.id === id);
     if (!player) return;
     player.stats = sanitizeStats(value);
-    const message = { type: 'stats', id, stats: player.stats };
-    this.broadcast(message);
-    this.emit('stats', message);
+    this.statsDirty = true;
+    this.emit('stats', { id, stats: player.stats });
   }
 
   sendStats(stats) {
-    if (this.isHost) this.updateStats(this.localId, stats);
-    else if (this.hostConnection?.open) this.hostConnection.send({ type: 'stats', stats: sanitizeStats(stats) });
+    if (this.isHost) {
+      this.updateStats(this.localId, stats);
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastStatsSent < 1000 && !stats.over) return;
+    this.lastStatsSent = now;
+    this.publish({ type: 'stats', stats: sanitizeStats(stats) });
+  }
+
+  flushStats() {
+    if (!this.isHost || !this.statsDirty || this.destroyed) return;
+    this.statsDirty = false;
+    const stats = Object.fromEntries(this.players.filter(player => player.stats).map(player => [player.id, player.stats]));
+    this.broadcast({ type: 'stats-batch', stats });
+  }
+
+  startRace(race) {
+    if (!this.isHost) return;
+    this.phase = 'race';
+    for (const player of this.players) delete player.stats;
+    this.statsDirty = false;
+    this.broadcast({ type: 'start', ...race });
   }
 
   finishRace() {
     if (!this.isHost) return;
     this.phase = 'results';
-    const message = { type: 'results', players: this.players };
+    this.flushStats();
+    const message = { type: 'results', players: this.publicPlayers() };
     this.broadcast(message);
     this.emit('results', message);
   }
 
   broadcastLobby() {
     if (!this.isHost) return;
-    this.broadcast({ type: 'lobby', phase: this.phase, players: this.players });
-    this.emit('lobby', { phase: this.phase, players: this.players });
-  }
-
-  startRace(race) {
-    this.phase = 'race';
-    for (const player of this.players) delete player.stats;
-    this.broadcast({ type: 'start', ...race });
+    const message = { type: 'lobby', phase: this.phase, players: this.publicPlayers() };
+    this.broadcast(message);
+    this.emit('lobby', message);
   }
 
   returnToLobby() {
@@ -225,19 +306,35 @@ export class Room extends EventTarget {
     this.broadcastLobby();
   }
 
-  broadcast(message) {
-    for (const connection of this.connections.values()) {
-      if (connection.open) connection.send(message);
+  removePlayer(id) {
+    const player = this.players.find(player => player.id === id);
+    if (!player) return;
+    this.players = this.players.filter(player => player.id !== id);
+    this.lastSeen.delete(id);
+    this.emit('player-left', { id });
+    this.broadcastLobby();
+  }
+
+  removeStalePlayers() {
+    if (!this.isHost) return;
+    const cutoff = Date.now() - 25000;
+    for (const player of [...this.players]) {
+      if (!player.host && (this.lastSeen.get(player.id) || 0) < cutoff) this.removePlayer(player.id);
     }
   }
 
   leave() {
+    if (this.destroyed) return;
+    const type = this.isHost ? 'host-left' : 'leave';
+    this.publish({ type }, true);
     this.destroyed = true;
     this.phase = 'home';
-    for (const connection of this.connections.values()) connection.close();
-    this.hostConnection?.close();
-    this.peer?.destroy();
-    this.connections.clear();
+    for (const timer of this.timers) {
+      clearInterval(timer);
+      clearTimeout(timer);
+    }
+    this.timers.clear();
+    this.mqttClient?.end();
     this.players = [];
   }
 }
