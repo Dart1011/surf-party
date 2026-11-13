@@ -20,7 +20,7 @@ Use the original controls:
 - Tab or the Crew button to show the live multiplayer roster without stopping the game.
 - Gamer tags and distinct crew colors appear above surfers; matching directional arrows and distance labels point toward off-screen crew members.
 
-The host must keep their tab open. Closing it ends the room. Lightweight room messages use secure MQTT-over-WebSocket connections through public EMQX and HiveMQ brokers instead of direct peer-to-peer connections, so players on different networks do not need WebRTC or TURN. No account or self-hosted server is required. The room code identifies a public, non-retained relay topic; use a non-sensitive display name and do not put private information in room messages.
+The host must keep their tab open. Closing it ends the room. Lightweight room messages use secure MQTT-over-WebSocket connections through public EMQX and HiveMQ brokers instead of direct peer-to-peer connections, so players on different networks do not need WebRTC or TURN. Each player connects to both brokers; duplicate messages are filtered and reordered so one broker can disconnect without splitting the room. No account or self-hosted server is required. The room code identifies a public, non-retained relay topic; use a non-sensitive display name and do not put private information in room messages.
 
 ## Run locally
 

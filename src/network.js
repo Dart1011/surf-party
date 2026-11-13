@@ -25,8 +25,13 @@ export class Room extends EventTarget {
     this.phase = 'home';
     this.raceProvider = null;
     this.destroyed = false;
-    this.mqttClient = null;
-    this.brokerIndex = 0;
+    this.mqttClients = new Map();
+    this.unavailableBrokers = new Set();
+    this.messageSequence = 0;
+    this.receivedMessageIds = new Set();
+    this.nextSequences = new Map();
+    this.pendingMessages = new Map();
+    this.messageFlushTimers = new Map();
     this.hasConnected = false;
     this.hasWelcomed = false;
     this.lastSeen = new Map();
@@ -94,20 +99,28 @@ export class Room extends EventTarget {
 
   connect() {
     if (this.destroyed) return;
+    BROKERS.forEach((url, index) => this.connectBroker(url, index));
+  }
+
+  connectBroker(url, index) {
     const topic = `${TOPIC_PREFIX}${this.code}`;
-    this.mqttClient = mqtt.connect(BROKERS[this.brokerIndex], {
+    const client = mqtt.connect(url, {
       clientId: `surf-party-${this.clientId}`,
       clean: true,
       connectTimeout: 12000,
       reconnectPeriod: 2000,
       keepalive: 30,
     });
-    this.mqttClient.on('connect', () => {
-      this.mqttClient.subscribe(topic, { qos: 0 }, error => {
+    this.mqttClients.set(index, client);
+    client.on('connect', () => {
+      if (this.destroyed || this.mqttClients.get(index) !== client) return;
+      client.subscribe(topic, { qos: 0 }, error => {
+        if (this.destroyed || this.mqttClients.get(index) !== client) return;
         if (error) {
           this.error(error);
           return;
         }
+        this.unavailableBrokers.delete(index);
         this.hostLastSeen = Date.now();
         if (this.isHost) {
           if (!this.hasConnected) this.emit('ready', { code: this.code, players: this.players });
@@ -119,31 +132,91 @@ export class Room extends EventTarget {
         this.hasConnected = true;
       });
     });
-    this.mqttClient.on('message', (receivedTopic, payload) => {
-      if (receivedTopic !== topic) return;
+    client.on('message', (receivedTopic, payload) => {
+      if (this.destroyed || this.mqttClients.get(index) !== client || receivedTopic !== topic) return;
       try {
-        const message = JSON.parse(payload.toString());
-        if (!message || message.sender === this.clientId) return;
-        if (message.target && message.target !== this.clientId) return;
-        this.receive(message);
+        this.enqueueMessage(JSON.parse(payload.toString()));
       } catch {}
     });
-    this.mqttClient.on('close', () => {
-      if (!this.destroyed) this.emit('status', 'Reconnecting to the room service…');
-    });
-    this.mqttClient.on('error', () => {
-      if (!this.hasConnected && this.brokerIndex === 0) {
-        this.brokerIndex = 1;
-        this.mqttClient.end(true);
-        this.connect();
-      } else if (this.phase === 'joining') this.emit('status', 'Still trying to reach the room…');
-    });
+    const unavailable = () => {
+      if (this.destroyed || this.mqttClients.get(index) !== client) return;
+      if (!this.unavailableBrokers.has(index)) this.emit('status', 'Reconnecting to the room service…');
+      this.unavailableBrokers.add(index);
+    };
+    client.on('close', unavailable);
+    client.on('error', unavailable);
+  }
+
+  enqueueMessage(message) {
+    if (!message || message.sender === this.clientId) return;
+    if (message.target && message.target !== this.clientId) return;
+    if (message.messageId) {
+      if (this.receivedMessageIds.has(message.messageId)) return;
+      this.receivedMessageIds.add(message.messageId);
+      if (this.receivedMessageIds.size > 2048) {
+        this.receivedMessageIds.delete(this.receivedMessageIds.values().next().value);
+      }
+    }
+    if (!Number.isSafeInteger(message.sequence) || message.sequence < 1) {
+      this.receive(message);
+      return;
+    }
+    const next = this.nextSequences.get(message.sender) || 1;
+    if (message.sequence < next) return;
+    if (!this.pendingMessages.has(message.sender)) this.pendingMessages.set(message.sender, new Map());
+    this.pendingMessages.get(message.sender).set(message.sequence, message);
+    this.flushMessages(message.sender);
+  }
+
+  flushMessages(sender, skipMissing = false) {
+    clearTimeout(this.messageFlushTimers.get(sender));
+    this.timers.delete(this.messageFlushTimers.get(sender));
+    this.messageFlushTimers.delete(sender);
+    const pending = this.pendingMessages.get(sender);
+    if (!pending) return;
+    let next = this.nextSequences.get(sender) || 1;
+    if (!pending.has(next)) {
+      if (!skipMissing) {
+        this.scheduleMessageFlush(sender);
+        return;
+      }
+      next = Math.min(...pending.keys());
+    }
+    while (pending.has(next)) {
+      const message = pending.get(next);
+      pending.delete(next);
+      this.receive(message);
+      next += 1;
+    }
+    this.nextSequences.set(sender, next);
+    if (pending.size) this.scheduleMessageFlush(sender);
+    else this.pendingMessages.delete(sender);
+  }
+
+  scheduleMessageFlush(sender) {
+    if (this.destroyed || this.messageFlushTimers.has(sender)) return;
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      this.messageFlushTimers.delete(sender);
+      this.flushMessages(sender, true);
+    }, 100);
+    this.messageFlushTimers.set(sender, timer);
+    this.timers.add(timer);
   }
 
   publish(message, afterLeave = false) {
-    if (!this.mqttClient || (this.destroyed && !afterLeave)) return;
-    const body = JSON.stringify({ ...message, sender: this.clientId, isHost: this.isHost });
-    this.mqttClient.publish(`${TOPIC_PREFIX}${this.code}`, body, { qos: 0, retain: false });
+    if (this.destroyed && !afterLeave) return;
+    this.messageSequence += 1;
+    const body = JSON.stringify({
+      ...message,
+      sender: this.clientId,
+      isHost: this.isHost,
+      messageId: `${this.clientId}-${this.messageSequence}`,
+      sequence: this.messageSequence,
+    });
+    for (const client of this.mqttClients.values()) {
+      if (client.connected) client.publish(`${TOPIC_PREFIX}${this.code}`, body, { qos: 0, retain: false });
+    }
   }
 
   broadcast(message) {
@@ -311,6 +384,11 @@ export class Room extends EventTarget {
     if (!player) return;
     this.players = this.players.filter(player => player.id !== id);
     this.lastSeen.delete(id);
+    this.nextSequences.delete(id);
+    this.pendingMessages.delete(id);
+    clearTimeout(this.messageFlushTimers.get(id));
+    this.timers.delete(this.messageFlushTimers.get(id));
+    this.messageFlushTimers.delete(id);
     this.emit('player-left', { id });
     this.broadcastLobby();
   }
@@ -334,7 +412,10 @@ export class Room extends EventTarget {
       clearTimeout(timer);
     }
     this.timers.clear();
-    this.mqttClient?.end();
+    for (const client of this.mqttClients.values()) client.end();
+    this.mqttClients.clear();
+    this.messageFlushTimers.clear();
+    this.pendingMessages.clear();
     this.players = [];
   }
 }
